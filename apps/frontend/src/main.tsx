@@ -15,8 +15,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// TODO: Candidate to implement (optional)
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
