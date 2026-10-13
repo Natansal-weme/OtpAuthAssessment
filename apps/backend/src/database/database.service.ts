@@ -20,8 +20,7 @@ export const DATABASE_DIR = Symbol('DATABASE_DIR');
  * share the same data. In the app, data persists across restarts (delete the folder to start
  * fresh). When `DatabaseService` is provided directly, e.g. in a testing module, it keeps the
  * data in memory instead.
- *
- * NOTE: This file is provided as-is. You should not need to change it.
+ * 
  */
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {

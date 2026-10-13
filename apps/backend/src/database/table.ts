@@ -65,8 +65,6 @@ const RESERVED_COLUMNS = ['id', '_id', 'createdAt', 'updatedAt'];
  *  - Values returned are fresh objects: mutating them does NOT change what is stored. Use
  *    `update()` to persist changes.
  *
- * NOTE: This file is provided as-is. You may extend it if your solution needs to, but you
- * probably should not need to.
  */
 export class Table<S extends TableSchema> {
   constructor(
