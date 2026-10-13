@@ -5,8 +5,9 @@
  * sides always agree on the shape of the API. Keep this file free of runtime code and backend
  * dependencies: plain types/interfaces only.
  *
- * The shapes below are a SUGGESTED starting point. Feel free to change them (add fields,
- * rename, restructure). The frontend type-check will tell you what needs updating.
+ * Tokens (pending-registration token and session token) are NEVER part of a request/response
+ * body: the server sets them as `httpOnly` cookies, so they are not readable by client-side JS.
+ * The client learns where it stands in the flow through `GET /api/auth/session`.
  */
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -19,14 +20,11 @@ export interface UserProfileData {
   email: string;
 }
 
-/**
- * User shape that is safe to send to the client.
- *
- * TODO: Candidate - adjust to your data model.
- */
+/** User shape that is safe to send to the client. */
 export interface PublicUser extends UserProfileData {
   id: string;
   phone: string;
+  createdAt: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -37,9 +35,17 @@ export interface RequestOtpDto {
   phone: string;
 }
 
+/**
+ * Identical for known and unknown phone numbers, so the endpoint cannot be used to discover
+ * which numbers have an account.
+ */
 export interface RequestOtpResponse {
-  // TODO: Candidate - define the response.
-  success: boolean;
+  /** Normalized (E.164) phone number the code was sent to. */
+  phone: string;
+  /** Seconds until the code expires. */
+  expiresInSeconds: number;
+  /** Seconds until a new code may be requested for this phone. */
+  resendAvailableInSeconds: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────────────
@@ -54,26 +60,31 @@ export interface VerifyOtpDto {
 /**
  * Result of a successful OTP verification. The two branches are the two possible flows:
  *
- *  - `authenticated`: the phone belongs to an existing user, so they are now logged in.
+ *  - `authenticated`: the phone belongs to an existing user. A session cookie was set.
  *  - `registration_required`: the phone is new. The user is in the "pending registration"
- *    state and must complete their profile on `/register` using `registrationToken`.
- *
- * TODO: Candidate - adjust as needed.
+ *    state (a pending-registration cookie was set) and must complete their profile on `/register`.
  */
 export type VerifyOtpResponse =
   | { status: 'authenticated'; user: PublicUser }
-  | { status: 'registration_required'; registrationToken: string };
+  | { status: 'registration_required'; phone: string };
 
 // ────────────────────────────────────────────────────────────────────────────────
 // auth.completeRegistration
 // ────────────────────────────────────────────────────────────────────────────────
 
-export interface CompleteRegistrationDto extends UserProfileData {
-  /** The `registrationToken` returned by `verifyOtp` for a new phone number. */
-  token: string;
-}
+/** The pending registration is identified by its `httpOnly` cookie, not by the body. */
+export type CompleteRegistrationDto = UserProfileData;
 
 export interface CompleteRegistrationResponse {
-  // TODO: Candidate - adjust as needed.
   user: PublicUser;
 }
+
+// ────────────────────────────────────────────────────────────────────────────────
+// auth.session
+// ────────────────────────────────────────────────────────────────────────────────
+
+/** Where the current browser stands in the auth flow (derived from its cookies). */
+export type SessionResponse =
+  | { status: 'anonymous' }
+  | { status: 'pending_registration'; phone: string }
+  | { status: 'authenticated'; user: PublicUser };

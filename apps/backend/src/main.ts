@@ -6,6 +6,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 export const API_PREFIX = 'api';
@@ -22,7 +23,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // TODO: Candidate to implement (optional)
+  // Auth tokens travel as httpOnly cookies (see `auth/auth.cookies.ts`).
+  app.use(cookieParser());
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);

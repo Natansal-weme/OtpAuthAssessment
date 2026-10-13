@@ -1,82 +1,135 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
-import { SmsService } from '../sms/sms.service';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { UsersService } from '../users/users.service';
 import type {
-  CompleteRegistrationResponse,
+  PublicUser,
   RequestOtpResponse,
+  SessionResponse,
   UserProfileData,
-  VerifyOtpResponse,
 } from './auth.types';
+import { OtpService } from './otp.service';
+import { PendingRegistrationService } from './pending-registration.service';
+import { SessionService } from './session.service';
+
+/** Tokens the client presented as cookies on the current request. */
+export interface ClientTokens {
+  sessionToken?: string;
+  registrationToken?: string;
+}
 
 /**
- * AuthService - the core of the assessment.
+ * Internal results: the public response body plus the raw token the controller must hand to the
+ * client as an `httpOnly` cookie. Raw tokens never appear in response bodies.
+ */
+export type VerifyOtpResult =
+  | { status: 'authenticated'; user: PublicUser; sessionToken: string }
+  | { status: 'registration_required'; phone: string; registrationToken: string };
+
+export interface CompleteRegistrationResult {
+  user: PublicUser;
+  sessionToken: string;
+}
+
+/**
+ * Orchestrates the OTP sign-in flow:
  *
- * ────────────────────────────────────────────────────────────────────────────────
- * The flow to implement
- * ────────────────────────────────────────────────────────────────────────────────
- *
- *   [ "/" phone ] --requestOtp--> [ "/verify" code ] --verifyOtp--+--> existing user: logged in
+ *   [ "/" phone ] --requestOtp--> [ "/verify" code ] --verifyOtp--+--> existing user: session
  *                                                                 |
- *                                                                 +--> new user: PENDING REGISTRATION
+ *                                                                 +--> new user: pending registration
  *                                                                          |
  *                     [ "/register" name + email ] <-----------------------+
  *                                |
- *                                +--completeRegistration--> user created + logged in
+ *                                +--completeRegistration--> user created + session
  *
- * Available building blocks:
- *   - `this.db`  - in-memory database. Define the tables you need in `database/database.schema.ts`.
- *   - `this.sms` - mock SMS sender. `await this.sms.sendSMS(phone, code)` logs the code to the console.
+ * Each step requires the server-side artifact produced by the previous one (OTP challenge ->
+ * pending registration -> session), so no step can be skipped from the client.
  *
- * Everything else (data model, code generation, validation, expiry, tokens, sessions, error
- * handling, security hardening, ...) is up to you. Throw Nest HTTP exceptions
- * (`BadRequestException`, `UnauthorizedException`, ...) for error cases; the frontend receives
- * them as rejected mutations.
- *
- * Each method currently throws `NotImplementedException` (HTTP 501).
+ * Expects already-validated, normalized input (see `auth.schemas.ts`).
  */
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly db: DatabaseService,
-    private readonly sms: SmsService,
+    private readonly otp: OtpService,
+    private readonly users: UsersService,
+    private readonly sessions: SessionService,
+    private readonly pendingRegistrations: PendingRegistrationService,
   ) {}
 
-  /**
-   * Step 1 - the user submitted their phone number on "/".
-   *
-   * Expected outcome: a one-time code is generated for `phone` and sent with `SmsService`,
-   * and whatever is needed to verify it later is persisted.
-   */
+  /** Step 1. Same response whether or not the phone has an account (no enumeration). */
   async requestOtp(phone: string): Promise<RequestOtpResponse> {
-    // TODO: Candidate to implement
-    throw new NotImplementedException('AuthService.requestOtp is not implemented yet');
+    const issued = await this.otp.issue(phone);
+    return { phone, ...issued };
   }
 
   /**
-   * Step 2 - the user submitted the code they received on "/verify".
-   *
-   * Expected outcome:
-   *   - Invalid code: the request is rejected.
-   *   - Valid code + phone belongs to an existing user: the user is logged in.
-   *   - Valid code + new phone: the user enters the "pending registration" state, and the client
-   *     receives a `registrationToken` to finish registration with.
+   * Step 2. On success, any tokens the client already held are revoked so that a browser is only
+   * ever in one auth state, and a fresh token is issued (no session fixation).
    */
-  async verifyOtp(phone: string, code: string): Promise<VerifyOtpResponse> {
-    // TODO: Candidate to implement
-    throw new NotImplementedException('AuthService.verifyOtp is not implemented yet');
+  async verifyOtp(phone: string, code: string, current: ClientTokens = {}): Promise<VerifyOtpResult> {
+    this.otp.verify(phone, code);
+    this.revoke(current);
+
+    const user = this.users.findByPhone(phone);
+    if (user) {
+      return {
+        status: 'authenticated',
+        user: this.users.toPublic(user),
+        sessionToken: this.sessions.create(user.id),
+      };
+    }
+
+    return {
+      status: 'registration_required',
+      phone,
+      registrationToken: this.pendingRegistrations.create(phone),
+    };
   }
 
   /**
-   * Step 3 (new users only) - the user submitted their profile on "/register".
-   *
-   * Expected outcome: `token` is validated as a legitimate pending registration, the user is
-   * created with `userData`, the pending registration is resolved, and the user is logged in.
+   * Step 3 (new users). The phone comes from the pending registration, never from the client.
+   * No `await` between resolving and consuming it, so a token cannot register twice.
    */
   async completeRegistration(
-    token: string,
-    userData: UserProfileData,
-  ): Promise<CompleteRegistrationResponse> {
-    // TODO: Candidate to implement
-    throw new NotImplementedException('AuthService.completeRegistration is not implemented yet');
+    registrationToken: string | undefined,
+    profile: UserProfileData,
+  ): Promise<CompleteRegistrationResult> {
+    const pending = this.pendingRegistrations.resolve(registrationToken);
+    if (!pending) {
+      throw new UnauthorizedException(
+        'Your verification has expired. Please verify your phone number again.',
+      );
+    }
+
+    if (this.users.findByPhone(pending.phone)) {
+      this.pendingRegistrations.consume(pending.id);
+      throw new ConflictException('This phone number is already registered. Please sign in again.');
+    }
+    const user = this.users.create(pending.phone, profile);
+    this.pendingRegistrations.consume(pending.id);
+
+    return {
+      user: this.users.toPublic(user),
+      sessionToken: this.sessions.create(user.id),
+    };
+  }
+
+  /** Where the client stands in the flow, derived from its cookies. */
+  getSession({ sessionToken, registrationToken }: ClientTokens): SessionResponse {
+    const session = this.sessions.resolve(sessionToken);
+    const user = session && this.users.findById(session.userId);
+    if (user) return { status: 'authenticated', user: this.users.toPublic(user) };
+
+    const pending = this.pendingRegistrations.resolve(registrationToken);
+    if (pending) return { status: 'pending_registration', phone: pending.phone };
+
+    return { status: 'anonymous' };
+  }
+
+  logout(tokens: ClientTokens): void {
+    this.revoke(tokens);
+  }
+
+  private revoke({ sessionToken, registrationToken }: ClientTokens): void {
+    this.sessions.revoke(sessionToken);
+    this.pendingRegistrations.revoke(registrationToken);
   }
 }

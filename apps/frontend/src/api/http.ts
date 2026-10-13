@@ -6,6 +6,9 @@
  *
  * Responses are Axios responses: the payload is in `.data`, and HTTP errors (e.g. a Nest
  * `BadRequestException`) are thrown as `AxiosError`s (see `errors.ts`).
+ *
+ * `withCredentials` lets the browser send the `httpOnly` auth cookies if the API is on another
+ * origin (`VITE_API_URL`).
  */
 import axios from 'axios';
 
@@ -13,5 +16,3 @@ export const http = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL ?? ''}/api`,
   withCredentials: true,
 });
-
-// TODO: Candidate to implement (optional)

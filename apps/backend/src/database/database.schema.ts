@@ -44,12 +44,51 @@ export interface BaseRecord {
   updatedAt: Date;
 }
 
+/** A registered account. `phone` (E.164) and `email` (lowercased) are unique. */
+export interface UserRecord {
+  phone: string;
+  name: string;
+  email: string;
+}
+
 /**
- * Table name -> row shape.
- *
- * TODO: Candidate to implement
+ * An outstanding one-time code for a phone number. At most one per phone: issuing a new code
+ * replaces the previous one. Only an HMAC of the code is stored, never the code itself.
  */
-export interface DatabaseSchema {}
+export interface OtpChallengeRecord {
+  phone: string;
+  codeHash: string;
+  expiresAt: Date;
+  /** Failed verification attempts so far; the challenge is burned at `OTP_MAX_ATTEMPTS`. */
+  attempts: number;
+}
+
+/**
+ * "Pending registration" state: the phone was proven via OTP but no account exists yet.
+ * Can only be created by a successful OTP verification, and is consumed by registration.
+ */
+export interface PendingRegistrationRecord {
+  phone: string;
+  /** SHA-256 of the opaque token held by the client in an `httpOnly` cookie. */
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+/** A logged-in session. */
+export interface SessionRecord {
+  userId: string;
+  /** SHA-256 of the opaque token held by the client in an `httpOnly` cookie. */
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+/** Table name -> row shape. */
+export interface DatabaseSchema {
+  users: UserRecord;
+  otpChallenges: OtpChallengeRecord;
+  pendingRegistrations: PendingRegistrationRecord;
+  sessions: SessionRecord;
+}
 
 /** Union of all registered table names. */
 export type TableName = Extract<keyof DatabaseSchema, string>;

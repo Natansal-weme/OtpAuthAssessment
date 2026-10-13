@@ -71,3 +71,63 @@ const examples = this.db.table('examples'); // fully typed
 examples.insert({ ... });
 examples.findOne({ ... });
 ```
+
+---
+
+## Solution Notes
+
+### Flow and state
+
+All flow state lives on the server. Each step can only be reached by presenting the artifact created by the previous step, so no step can be skipped from the client:
+
+```text
+POST /request-otp ─► otpChallenges row ─► POST /verify-otp ─┬─► known phone ─► sessions row            (cookie `sid`)
+                                                             └─► new phone   ─► pendingRegistrations row (cookie `reg`)
+                                                                                 └─► POST /complete-registration ─► users row + sessions row
+```
+
+| Table                  | Purpose                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `users`                | Accounts. Unique phone (E.164) and email (lowercased).                  |
+| `otpChallenges`        | One outstanding code per phone: HMAC of the code, expiry, attempt count. |
+| `pendingRegistrations` | "Phone verified, no account yet". Bound to the verified phone.          |
+| `sessions`             | Logged-in sessions.                                                     |
+
+The browser never holds a token in JS. The client asks `GET /api/auth/session` where it stands (`anonymous`, `pending_registration`, or `authenticated`), and a `SessionGuard` layout route redirects to the right page. Mutations write their result into that React Query cache entry, so navigation does not need an extra round trip. The phone is passed from `/` to `/verify` in router state; it is not a secret, because the server checks that a code was issued for it.
+
+### Endpoints
+
+| Method + path                         | Notes                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `POST /api/auth/request-otp`          | Same response for known and unknown phones. 30s resend cooldown (429). |
+| `POST /api/auth/verify-otp`           | Sets `sid` (existing user) or `reg` (new user).                        |
+| `POST /api/auth/complete-registration`| Requires the `reg` cookie. The phone comes from the server, not the body. |
+| `GET  /api/auth/session`              | Current flow state.                                                   |
+| `POST /api/auth/logout`               | Revokes the session and clears cookies.                               |
+
+### Security measures
+
+- **OTP generation and storage:** codes come from `crypto.randomInt` and are 6 digits. Only an HMAC-SHA256 of the code is stored, keyed with a server secret (`OTP_SECRET`) and bound to the phone, and it is compared in constant time.
+- **OTP limits:** a code expires after 5 minutes and is single-use. 5 wrong attempts burn it, and a new code can be requested at most every 30 seconds per phone.
+- **Generic errors:** every verification failure returns the same "Invalid or expired code" message.
+- **Tokens:** session and registration tokens are 256-bit random values, and only their SHA-256 hash is stored, so a database leak cannot be replayed.
+- **Cookies:** tokens travel only in `httpOnly; SameSite=Strict; Path=/api` cookies (`Secure` in production). This protects against token theft through XSS and against CSRF.
+- **Registration cannot bypass OTP:** a pending registration can only be created by a successful OTP verification. It expires after 15 minutes and is consumed on use. `complete-registration` ignores any phone sent by the client.
+- **No race conditions:** there is no `await` between reading and consuming a challenge or pending registration, so concurrent requests cannot double-spend them.
+- **No session fixation:** a successful verification revokes any tokens the browser already held and issues fresh ones.
+- **Input validation:** zod schemas (`auth.schemas.ts`) validate and normalize every body. Phones are normalized to E.164, names are trimmed, emails are lowercased, and unknown fields are stripped. Each schema is checked against the shared contract types with `satisfies`.
+
+### Code layout (backend)
+
+- `auth/auth.controller.ts`: HTTP only. It validates input and translates tokens to and from cookies (`auth.cookies.ts`).
+- `auth/auth.service.ts`: orchestrates the flow.
+- `auth/otp.service.ts`, `auth/pending-registration.service.ts`, `auth/session.service.ts`, `users/users.service.ts`: one concern each.
+- `auth/auth.service.spec.ts` and `auth/auth.schemas.spec.ts`: cover the happy paths, expiry, lockout, reuse, cooldown, cross-phone codes, forged, expired, and reused registration tokens, duplicate emails, and logout.
+
+### Trade-offs and next steps
+
+- Add IP-based rate limiting (e.g. `@nestjs/throttler`) on top of the per-phone limits, to stop SMS pumping across many numbers.
+- Use a real database with unique indexes and transactions instead of in-process checks, and Redis for challenges and sessions with native TTLs.
+- Use `libphonenumber-js` for proper phone validation.
+- Add CSRF tokens if the frontend is ever served from a different site than the API (`SameSite=Strict` is sufficient for same-site).
+- Add session rotation and sliding expiry, and a background sweep of expired rows (today they are purged lazily on access).
