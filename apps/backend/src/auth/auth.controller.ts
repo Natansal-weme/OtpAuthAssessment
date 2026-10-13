@@ -1,41 +1,25 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import type { CompleteRegistrationDto, RequestOtpDto, VerifyOtpDto } from './auth.types';
+import { Controller, NotImplementedException, Post } from '@nestjs/common';
 
 /**
- * Auth HTTP endpoints (all under the global `/api` prefix):
- *
- *   POST /api/auth/request-otp            body: RequestOtpDto            -> RequestOtpResponse
- *   POST /api/auth/verify-otp             body: VerifyOtpDto             -> VerifyOtpResponse
- *   POST /api/auth/complete-registration  body: CompleteRegistrationDto  -> CompleteRegistrationResponse
- *
- * Note: there is NO validation in place - `@Body()` is whatever JSON the client sent, the DTO
- * types are compile-time only.
- *
- * Keep this layer thin: HTTP concerns here, business logic in `AuthService`.
+ * Auth endpoints (under the global `/api` prefix).
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
-
   @Post('request-otp')
-  @HttpCode(HttpStatus.OK)
-  async requestOtp(@Body() body: RequestOtpDto) {
+  requestOtp() {
     // TODO: Candidate to implement
-    return this.authService.requestOtp(body.phone);
+    throw new NotImplementedException();
   }
 
   @Post('verify-otp')
-  @HttpCode(HttpStatus.OK)
-  async verifyOtp(@Body() body: VerifyOtpDto) {
+  verifyOtp() {
     // TODO: Candidate to implement
-    return this.authService.verifyOtp(body.phone, body.code);
+    throw new NotImplementedException();
   }
 
   @Post('complete-registration')
-  async completeRegistration(@Body() body: CompleteRegistrationDto) {
+  completeRegistration() {
     // TODO: Candidate to implement
-    const { token, ...userData } = body;
-    return this.authService.completeRegistration(token, userData);
+    throw new NotImplementedException();
   }
 }

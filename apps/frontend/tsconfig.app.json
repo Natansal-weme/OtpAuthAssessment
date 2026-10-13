@@ -11,12 +11,7 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
     "strict": true,
-    "noFallthroughCasesInSwitch": true,
-
-    // Type-only access to the backend API contract (apps/backend/src/auth/auth.types.ts).
-    "paths": {
-      "@backend/*": ["../backend/src/*"]
-    }
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["src"]
 }

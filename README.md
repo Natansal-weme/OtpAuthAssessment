@@ -33,20 +33,16 @@ apps/
 │       ├── main.ts                bootstrap (global `/api` prefix, CORS)
 │       ├── app.module.ts
 │       ├── auth/
-│       │   ├── auth.types.ts      API contract, shared with the frontend
 │       │   ├── auth.service.ts    
 │       │   ├── auth.controller.ts HTTP endpoints 
 │       │   └── auth.service.spec.ts 
 │       ├── database/
-│       │   ├── database.schema.ts table definitions (empty for now)
-│       │   ├── database.service.ts in-memory DB (provided)
-│       │   └── in-memory-table.ts typed table API (provided)
+│       │   ├── database.schema.ts table definitions as zod schemas (empty for now)
+│       │   ├── database.service.ts JSON file DB (provided)
+│       │   └── table.ts           typed table API (provided)
 │       └── sms/sms.service.ts     mock SMS sender (provided)
-└── frontend/                      React + React Router + TanStack Query + MUI
+└── frontend/                      React + React Router + MUI
     └── src/
-        ├── api/
-        │   ├── http.ts            axios instance (base URL `/api`)
-        │   └── hooks.ts           
         ├── pages/                 
         ├── components/            page layout (provided)
         └── router.tsx             routes / guards
@@ -56,18 +52,20 @@ apps/
 
 The backend is a plain NestJS application relying on standard modules, controllers, and services. The `AuthController` exposes the REST API endpoints.
 
-These endpoints rely on data transfer objects and types located in `apps/backend/src/auth/auth.types.ts`. The frontend imports these **type-only** (`import type ... from '@backend/auth/auth.types'`), meaning both sides strictly share a single contract. In development, Vite is configured to proxy `/api/*` to the backend, meaning the browser and API share an origin.
+The frontend contains stub pages and components only; connecting it to the backend is part of the task.
 
-## The In-Memory Database
+## The Database
 
-`DatabaseService` is a mock JSON store. It has no tables initialized out of the box. You can define them using TypeScript interfaces inside `apps/backend/src/database/database.schema.ts` (instructions are available in that file):
+`DatabaseService` is a JSON file database built on [`@loewen-digital/flatdb`](https://github.com/loewen-digital/flatdb). Every row is stored as a JSON file in `apps/backend/data/<table>/<id>.json` (override with `DATABASE_DIR`), so data survives restarts; delete the folder to start fresh. Unit tests that provide `DatabaseService` directly keep their data in memory.
+
+It has no tables initialized out of the box. You can define them as [zod](https://zod.dev) object schemas inside `apps/backend/src/database/database.schema.ts` (instructions are available in that file). Every write is validated against the schema:
 
 ```ts
-export interface DatabaseSchema {
-  examples: ExampleRecord;
-}
+export const databaseSchema = {
+  examples: z.object({ title: z.string(), dueAt: z.coerce.date() }),
+} satisfies Record<string, TableSchema>;
 
-const examples = this.db.table('examples'); // fully typed
-examples.insert({ ... });
-examples.findOne({ ... });
+const examples = this.db.table('examples'); // fully typed, every call is async
+await examples.insert({ ... });
+await examples.findOne({ ... });
 ```

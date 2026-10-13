@@ -4,8 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"],
-      "env": ["VITE_*"]
+      "outputs": ["dist/**"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],
@@ -17,7 +16,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["PORT", "CLIENT_ORIGIN", "BACKEND_URL", "VITE_*"]
+      "passThroughEnv": ["PORT", "CLIENT_ORIGIN"]
     }
   }
 }

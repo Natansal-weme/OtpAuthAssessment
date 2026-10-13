@@ -1,55 +1,58 @@
+import type { z } from 'zod';
+import type { Row, TableSchema } from './table';
+
 /**
  * Database schema registry.
  *
- * The in-memory database has NO tables yet - defining them is part of the assessment.
+ * The database has NO tables yet - defining them is part of the assessment.
  *
  * ────────────────────────────────────────────────────────────────────────────────
  * How to define a table
  * ────────────────────────────────────────────────────────────────────────────────
  *
- * 1. Describe the row shape with a TypeScript interface. Do NOT declare `id`,
- *    `createdAt` or `updatedAt`: the database adds them to every row (see `BaseRecord`).
+ * 1. Describe the row shape with a zod object schema. Do NOT declare `id`, `createdAt` or
+ *    `updatedAt`: the database adds them to every row (see `BaseRecord`).
+ *    Rows are stored as JSON files, so use `z.coerce.date()` for `Date` columns.
  *
- *      export interface ExampleRecord {
- *        title: string;
- *        done: boolean;
- *      }
+ *      import { z } from 'zod';
  *
- * 2. Register it in `DatabaseSchema` below. The key is the table name:
+ *      export const ExampleSchema = z.object({
+ *        title: z.string().min(1),
+ *        done: z.boolean().default(false),
+ *        dueAt: z.coerce.date().optional(),
+ *      });
  *
- *      export interface DatabaseSchema {
- *        examples: ExampleRecord;
- *      }
+ * 2. Register it in `databaseSchema` below. The key is the table name:
  *
- *    (Alternatively, register it from your own module with declaration merging:
- *        declare module '../database/database.schema' {
- *          interface DatabaseSchema { examples: ExampleRecord }
- *        }
- *    )
+ *      export const databaseSchema = {
+ *        examples: ExampleSchema,
+ *      } satisfies Record<string, TableSchema>;
  *
- * 3. Inject `DatabaseService` and use the table. It is fully typed:
+ * 3. Inject `DatabaseService` and use the table. It is fully typed and every call is async:
  *
- *      const examples = this.db.table('examples');      // InMemoryTable<ExampleRecord>
- *      const row = examples.insert({ title: 'a', done: false });
- *      examples.findOne({ title: 'a' });                 // Row<ExampleRecord> | undefined
- *      examples.update(row.id, { done: true });
+ *      const examples = this.db.table('examples');            // Table<typeof ExampleSchema>
+ *      const row = await examples.insert({ title: 'a' });     // validated with ExampleSchema
+ *      await examples.findOne({ title: 'a' });                // Row<Example> | undefined
+ *      await examples.findMany({ dueAt: { $lt: new Date() } });
+ *      await examples.update(row.id, { done: true });
  *
- * See `in-memory-table.ts` for the full table API.
+ *    Need the row type elsewhere? `TableRow<'examples'>` (or `z.infer<typeof ExampleSchema>`
+ *    for the shape without the auto-managed columns).
+ *
+ * See `table.ts` for the full table API.
  */
 
-/** Columns automatically managed by the database for every row. */
-export interface BaseRecord {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 /**
- * Table name -> row shape.
+ * Table name -> row schema.
  *
  * TODO: Candidate to implement
  */
-export interface DatabaseSchema {}
+export const databaseSchema = {} satisfies Record<string, TableSchema>;
+
+export type DatabaseSchema = typeof databaseSchema;
 
 /** Union of all registered table names. */
 export type TableName = Extract<keyof DatabaseSchema, string>;
+
+/** A stored row of table `K`, including `id`, `createdAt` and `updatedAt`. */
+export type TableRow<K extends TableName> = Row<z.output<DatabaseSchema[K]>>;

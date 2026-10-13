@@ -15,8 +15,6 @@ async function bootstrap() {
 
   app.setGlobalPrefix(API_PREFIX);
 
-  // The Vite dev server proxies `/api/*` to this server (same-origin in development),
-  // so CORS only matters if the frontend is pointed at the backend directly via VITE_API_URL.
   app.enableCors({
     origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173',
     credentials: true,
