@@ -25,7 +25,7 @@ export function VerifyPage() {
           slotProps={{
             htmlInput: {
               inputMode: 'numeric',
-              style: { letterSpacing: '0.5em', textAlign: 'center', fontSize: '1.25rem' },
+              sx: { letterSpacing: '0.5em', textAlign: 'center', fontSize: '1.25rem' },
             },
           }}
         />
