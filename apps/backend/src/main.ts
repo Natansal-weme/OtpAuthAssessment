@@ -6,21 +6,16 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { existsSync } from 'node:fs';
 import { AppModule } from './app.module';
+import { API_PREFIX, configureApp } from './app.setup';
 
-export const API_PREFIX = 'api';
+// Local secrets (OTP_SECRET) live in `apps/backend/.env`, see `.env.example`.
+if (existsSync('.env')) process.loadEnvFile('.env');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  app.setGlobalPrefix(API_PREFIX);
-
-  app.enableCors({
-    origin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173',
-    credentials: true,
-  });
-
-  // TODO: Candidate to implement (optional)
+  configureApp(app);
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);

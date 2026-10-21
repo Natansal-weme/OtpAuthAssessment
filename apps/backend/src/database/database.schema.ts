@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { Row, TableSchema } from './table';
 
 /**
@@ -42,12 +42,55 @@ import type { Row, TableSchema } from './table';
  * See `table.ts` for the full table API.
  */
 
+/** Phones are stored in E.164 (`+972…`), see `common/phone.ts`. */
+const E164 = z.string().regex(/^\+\d{8,15}$/);
+const SHA256_HEX = z.string().regex(/^[0-9a-f]{64}$/);
+
+/** A registered user. Exists only once the profile is complete. */
+export const UserSchema = z.object({
+  phone: E164,
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Enter your name')
+    .max(100, 'Name must be at most 100 characters'),
+  email: z.email('Enter a valid email address').toLowerCase(),
+});
+
 /**
- * Table name -> row schema.
- *
- * TODO: Candidate to implement
+ * The OTP challenge of a phone (at most one per phone). The code itself is never stored, only its
+ * HMAC. `sendCount` / `windowStartedAt` outlive the code so the hourly send cap survives resends.
  */
-export const databaseSchema = {} satisfies Record<string, TableSchema>;
+export const OtpChallengeSchema = z.object({
+  phone: E164,
+  codeHash: SHA256_HEX,
+  expiresAt: z.coerce.date(),
+  attempts: z.number().int().min(0),
+  lastSentAt: z.coerce.date(),
+  sendCount: z.number().int().min(1),
+  windowStartedAt: z.coerce.date(),
+});
+
+/** Proof that `phone` was verified, consumed by `complete-registration`. Single use. */
+export const RegistrationTicketSchema = z.object({
+  tokenHash: SHA256_HEX,
+  phone: E164,
+  expiresAt: z.coerce.date(),
+});
+
+export const SessionSchema = z.object({
+  tokenHash: SHA256_HEX,
+  userId: z.string(),
+  expiresAt: z.coerce.date(),
+});
+
+/** Table name -> row schema. */
+export const databaseSchema = {
+  users: UserSchema,
+  otpChallenges: OtpChallengeSchema,
+  registrationTickets: RegistrationTicketSchema,
+  sessions: SessionSchema,
+} satisfies Record<string, TableSchema>;
 
 export type DatabaseSchema = typeof databaseSchema;
 
