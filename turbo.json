@@ -16,7 +16,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["PORT", "CLIENT_ORIGIN"]
+      "passThroughEnv": ["PORT", "CLIENT_ORIGIN", "OTP_SECRET", "DATABASE_DIR", "NODE_ENV"]
     }
   }
 }

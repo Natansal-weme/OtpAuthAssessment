@@ -1,18 +1,16 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
+import { CommonModule } from './common/common.module';
 import { DatabaseModule } from './database/database.module';
-import { SmsModule } from './sms/sms.module';
 
 /**
  * Root module.
  *
- * - `DatabaseModule` is global: `DatabaseService` can be injected anywhere without re-importing.
- * - `SmsModule` exports `SmsService` for modules that import it.
- * - `AuthModule` hosts the OTP flow (service + controller).
- *
- * TODO: Candidate - register any additional modules you create
+ * - `CommonModule` and `DatabaseModule` are global: config, clock, lock and `DatabaseService` can be
+ *   injected anywhere.
+ * - `AuthModule` hosts the OTP flow; it pulls in `OtpModule`, `SessionsModule` and `UsersModule`.
  */
 @Module({
-  imports: [DatabaseModule, SmsModule, AuthModule],
+  imports: [CommonModule, DatabaseModule, AuthModule],
 })
 export class AppModule {}

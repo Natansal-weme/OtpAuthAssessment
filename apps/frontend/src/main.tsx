@@ -6,8 +6,6 @@ import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { theme } from './theme';
 
-// TODO: Candidate to implement (optional)
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
